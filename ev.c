@@ -602,7 +602,11 @@ fd_reify (EV_P)
       if (events)
         {
           unsigned long argp;
-          anfd->handle = _get_osfhandle (fd);
+          #ifdef EV_FD_TO_WIN32_HANDLE
+            anfd->handle = EV_FD_TO_WIN32_HANDLE (fd);
+          #else
+            anfd->handle = _get_osfhandle (fd);
+          #endif
           assert (("libev only supports socket fds in this configuration", ioctlsocket (anfd->handle, FIONREAD, &argp) == 0));
         }
 #endif
@@ -865,19 +869,27 @@ static WL childs [EV_PID_HASHSIZE];
 
 static ev_signal childev;
 
+#ifndef WIFCONTINUED
+# define WIFCONTINUED(status) 0
+#endif
+
 void inline_speed
 child_reap (EV_P_ ev_signal *sw, int chain, int pid, int status)
 {
   ev_child *w;
+  int traced = WIFSTOPPED (status) || WIFCONTINUED (status);
 
   for (w = (ev_child *)childs [chain & (EV_PID_HASHSIZE - 1)]; w; w = (ev_child *)((WL)w)->next)
-    if (w->pid == pid || !w->pid)
-      {
-        ev_set_priority (w, ev_priority (sw)); /* need to do it *now* */
-        w->rpid    = pid;
-        w->rstatus = status;
-        ev_feed_event (EV_A_ (W)w, EV_CHILD);
-      }
+    {
+      if ((w->pid == pid || !w->pid)
+          && (!traced || (w->flags & 1)))
+        {
+          ev_set_priority (w, ev_priority (sw)); /* need to do it *now* */
+          w->rpid    = pid;
+          w->rstatus = status;
+          ev_feed_event (EV_A_ (W)w, EV_CHILD);
+        }
+    }
 }
 
 #ifndef WCONTINUED
@@ -1164,6 +1176,7 @@ loop_fork (EV_P)
         syserr ("(libev) error creating pipe");
 
       siginit (EV_A);
+      sigcb (EV_A_ &sigev, EV_READ);
     }
 
   postfork = 0;
@@ -1195,7 +1208,7 @@ ev_loop_destroy (EV_P)
 void
 ev_loop_fork (EV_P)
 {
-  postfork = 1;
+  postfork = 1; /* must be in line with ev_default_fork */
 }
 
 #endif
@@ -1269,7 +1282,7 @@ ev_default_fork (void)
 #endif
 
   if (backend)
-    postfork = 1;
+    postfork = 1; /* must be in line with ev_loop_fork */
 }
 
 /*****************************************************************************/
